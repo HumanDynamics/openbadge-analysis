@@ -1,0 +1,10 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# IPython NB Checkpoints
+.ipynb_checkpoints/
+
+# Pycharm
+.idea
+
