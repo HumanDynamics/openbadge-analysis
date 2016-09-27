@@ -3,3 +3,5 @@
 __author__ = 'Oren Lederman'
 __email__ = 'orenled@mit.edu'
 __version__ = '0.1.0'
+
+from .core import *
