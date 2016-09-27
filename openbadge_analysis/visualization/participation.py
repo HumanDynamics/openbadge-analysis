@@ -101,7 +101,6 @@ def percentage_participation(df_stitched_all, labels, member_names=None):
             print('No meetings for ' + str(label))
             continue
         df = pd.DataFrame()
-        print('Generating data for  ' + str(label))
         for df_stitched in df_stitched_list:
             df_turns = ob.total_turns(df_stitched)
             df_turns.set_index('member', inplace=True)
