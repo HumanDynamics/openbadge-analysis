@@ -1,0 +1,6 @@
+bokeh==0.12.1
+pandas
+seaborn
+numpy
+matplotlib
+

@@ -7,10 +7,3 @@ tox==2.3.1
 coverage==4.1
 Sphinx==1.4.4
 
-
-bokeh==0.12.1
-pandas
-seaborn
-numpy
-matplotlib
-
