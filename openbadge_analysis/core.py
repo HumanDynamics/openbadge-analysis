@@ -5,7 +5,7 @@ import itertools
 import datetime
 
 
-def sample2data(input_file_path, datetime_index=True, resample=True):
+def sample2data(input_file_path, datetime_index=True, resample=True, log_version=None):
 
     with open(input_file_path,'r') as input_file:
         raw_data = input_file.readlines() #This is a list of strings
@@ -28,6 +28,9 @@ def sample2data(input_file_path, datetime_index=True, resample=True):
             if data['type'] == 'audio received':
                 batched_sample_data.append(data['data'])
 
+    else:
+        raise Exception('file log version was not set and cannot be identified')
+
     sample_data = []
 
     for j in range(len(batched_sample_data)):
@@ -46,6 +49,7 @@ def sample2data(input_file_path, datetime_index=True, resample=True):
             sample = {}
             sample.update(batch)
             sample['signal'] = samples[i]
+
             sample['timestamp'] = reference_timestamp + i*sampleDelay
             sample_data.append(sample)
 
