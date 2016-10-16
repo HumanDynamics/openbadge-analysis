@@ -1,6 +1,7 @@
-bokeh==0.12.1
+cython
+numpy
+scipy
+matplotlib
 pandas
 seaborn
-numpy
-matplotlib
-
+bokeh==0.12.1
