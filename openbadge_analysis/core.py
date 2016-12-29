@@ -5,6 +5,64 @@ import itertools
 import datetime
 
 
+def is_meeting_metadata(json_record):
+    """
+    returns true if given record is a header
+    :param json_record:
+    :return:
+    """
+    if 'startTime' in json_record:
+        return True
+    elif "type" in json_record and json_record["type"] == "meeting started":
+        return True
+    else:
+        return False
+
+
+def meeting_log_version(meeting_metadata):
+    """
+    returns version number for a given meeting metadata. This is done for
+    backward compatibility with meetings that had no version number
+    :param meeting_metadata:
+    :return:
+    """
+    log_version = '1.0'
+    if 'data' in meeting_metadata and 'log_version' in meeting_metadata['data']:
+            log_version = meeting_metadata['data']['log_version']
+    return log_version
+
+
+def load_audio_chunks_as_json_objects(file_object, log_version=None):
+    '''
+    Loads an audio chunks as jason objects
+    :param file_object: a file object to read from
+    :param log_version: defines the log_version if file is missing a header line
+    :return:
+    '''
+    first_data_row = 0 # some file may contain meeting information/header
+
+    raw_data = file_object.readlines()           # This is a list of strings
+    meeting_metadata = json.loads(raw_data[0])  # Convert the header string into a json object
+    if is_meeting_metadata(meeting_metadata):
+        first_data_row = 1 # skip the header
+        log_version = meeting_log_version(meeting_metadata)
+
+    if log_version == '1.0':
+        batched_sample_data = map(json.loads, raw_data[first_data_row:])  # Convert the raw sample data into a json object
+
+    elif log_version == '2.0':
+        batched_sample_data = []
+        for row in raw_data[first_data_row:]:
+            data = json.loads(row)
+            if data['type'] == 'audio received':
+                batched_sample_data.append(data['data'])
+
+    else:
+        raise Exception('file log version was not set and cannot be identified')
+
+    return batched_sample_data
+
+
 def sample2data(input_file_path, datetime_index=True, resample=True, log_version=None):
 
     with open(input_file_path,'r') as input_file:
