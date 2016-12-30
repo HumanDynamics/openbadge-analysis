@@ -33,12 +33,12 @@ def meeting_log_version(meeting_metadata):
 
 
 def load_audio_chunks_as_json_objects(file_object, log_version=None):
-    '''
+    """
     Loads an audio chunks as jason objects
     :param file_object: a file object to read from
     :param log_version: defines the log_version if file is missing a header line
     :return:
-    '''
+    """
     first_data_row = 0 # some file may contain meeting information/header
 
     raw_data = file_object.readlines()           # This is a list of strings
