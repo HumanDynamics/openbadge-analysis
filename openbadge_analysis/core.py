@@ -63,6 +63,37 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None):
     return batched_sample_data
 
 
+def load_proximity_chunks_as_json_objects(file_object, log_version=None):
+    """
+    Loads an audio chunks as jason objects
+    :param file_object: a file object to read from
+    :param log_version: defines the log_version if file is missing a header line
+    :return:
+    """
+    first_data_row = 0 # some file may contain meeting information/header
+
+    raw_data = file_object.readlines()           # This is a list of strings
+    meeting_metadata = json.loads(raw_data[0])  # Convert the header string into a json object
+    if is_meeting_metadata(meeting_metadata):
+        first_data_row = 1 # skip the header
+        log_version = meeting_log_version(meeting_metadata)
+
+    if log_version == '1.0':
+        raise Exception('Version 1.0 does not support proximity data')
+
+    elif log_version == '2.0':
+        batched_sample_data = []
+        for row in raw_data[first_data_row:]:
+            data = json.loads(row)
+            if data['type'] == 'proximity received':
+                batched_sample_data.append(data['data'])
+
+    else:
+        raise Exception('file log version was not set and cannot be identified')
+
+    return batched_sample_data
+
+
 def sample2data(input_file_path, datetime_index=True, resample=True, log_version=None):
 
     with open(input_file_path,'r') as input_file:
