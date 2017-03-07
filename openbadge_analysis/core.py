@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import itertools
 import datetime
-
+import traceback
 
 def is_meeting_metadata(json_record):
     """
@@ -32,11 +32,12 @@ def meeting_log_version(meeting_metadata):
     return log_version
 
 
-def load_audio_chunks_as_json_objects(file_object, log_version=None):
+def load_audio_chunks_as_json_objects(file_object, log_version=None, ignore_errors=True):
     """
     Loads an audio chunks as jason objects
     :param file_object: a file object to read from
     :param log_version: defines the log_version if file is missing a header line
+    :param ignore_errors: when set to true, skips faulty lines
     :return:
     """
     first_data_row = 0 # some file may contain meeting information/header
@@ -52,10 +53,20 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None):
 
     elif log_version == '2.0':
         batched_sample_data = []
+        c = 0;
         for row in raw_data[first_data_row:]:
-            data = json.loads(row)
-            if data['type'] == 'audio received':
-                batched_sample_data.append(data['data'])
+            c += 1
+            try:
+                data = json.loads(row)
+                if data['type'] == 'audio received':
+                    batched_sample_data.append(data['data'])
+            except Exception as e:
+                s = traceback.format_exc()
+                if ignore_errors:
+                    print("unexpected failure in line {}, skipping it ({})".format(c, e))
+                else:
+                    print("unexpected failure in line {}, {} ,{}".format(c, e, s))
+                    raise
 
     else:
         raise Exception('file log version was not set and cannot be identified')
