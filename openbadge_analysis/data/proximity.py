@@ -3,8 +3,8 @@ import numpy as np
 from ..core import load_proximity_chunks_as_json_objects
 
 
-def load_proximity_data_from_logs(logs, log_version=None):
-    """Creates a proximity data DataFrame from a set of proxmity logs.
+def load_proximity_data_from_logs(logs, log_version=None, time_bins_size='1min'):
+    """Creates a resampled proximity DataFrame from a set of proximity logs.
     
     Parameters
     ----------
@@ -14,10 +14,15 @@ def load_proximity_data_from_logs(logs, log_version=None):
     log_version : str or None
         The version of the logs, in case the files are missing a header.
     
+    time_bins_size : str
+        The size, in units of time, of the time bins used for the resampling.
+        Defaults to '1min', the resolution of the badges.
+    
     Returns
     -------
-    DataFrame :
-        A pandas DataFrame with each row containing a single proximity record."""
+    pandas.DataFrame :
+        A pandas DataFrame with each row containing a single proximity record.
+    """
     
     # Load proximity chunks
     # A chunk contains a set of observations by a given badge at a given timestamp
@@ -35,107 +40,113 @@ def load_proximity_data_from_logs(logs, log_version=None):
             proximity_data.append((
                 chunk['timestamp'],
                 chunk['member'],
-                chunk['badge_address'],
                 chunk['voltage'],
-                mid,  # The id of the observed badge
+                int(mid),  # The id of the observed badge
                 distance['rssi'],
                 distance['count'],
             ))
     
     # Create a DataFrame from the proximity data
     df = pd.DataFrame(proximity_data, columns=(
-        'timestamp', 'member', 'badge_address', 'voltage', 'observed_id', 'rssi', 'count'
+        'timestamp', 'member', 'voltage', 'observed_id', 'rssi', 'count'
     ))
-    # Convert timestamp to datetime for convenience
-    df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True)
+    
+    # Convert timestamp to datetime for convenience, and localize to UTC
+    df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True) \
+                       .dt.tz_localize('UTC')
     del df['timestamp']
     
-    df.sort_values(['datetime', 'member', 'observed_id'], inplace=True)
-    df = df.groupby(['datetime', 'member', 'observed_id']).mean()  # In case we have multiple observations
+    # Group per time bins, member and observed_id,
+    # and take the first value, arbitrarily
+    df = df.groupby([
+        pd.TimeGrouper('1min', key='datetime'),
+        'member',
+        'observed_id'
+    ]).first()
+#    ]).apply(
+#        lambda df: df.loc[df['rssi'].idxmax()]
+#    )
+    
+    # Sort the data
+    df.sort_index(inplace=True)
     
     return df
 
 
-def member_to_member_proximity(proximity_data, id_mapping):
+def member_to_member_proximity(proximity_data, members_badges):
     """Creates a member-to-member proximity data DataFrame from the raw proximity data.
     
     Parameters
     ----------
-    proximity_data : DataFrame
+    proximity_data : pandas.DataFrame
         The raw proximity data, as returned by `load_proximity_data_from_logs`.
     
-    id_mapping : dict
-        A mapping from ids to member.
+    members_badges : pandas.DataFrame
+        The badges used by each member, indexed by datetime and badge id, as returned by
+        `load_member_badges_from_logs`.
     
     Returns
     -------
-    DataFrame :
-        The member-to-member proximity data."""
+    pandas.DataFrame :
+        The member-to-member proximity data.
+    """
     
-    df = proximity_data.reset_index()
+    df = proximity_data.copy().reset_index()
+
+    # Join the member names using their badge ids
+    df = df.join(members_badges, on=['datetime', 'observed_id'], lsuffix='1', rsuffix='2')
+
+    # Filter out the beacons (i.e. those ids that did not have a mapping)
+    df.dropna(axis=0, subset=['member2'], inplace=True)
+
+    # Set the index and sort it
+    df.set_index(['datetime', 'member1', 'member2'], inplace=True)
+    df.sort_index(inplace=True)
+
+    # Remove duplicate indexes, keeping the first (arbitrarily)
+    df = df[~df.index.duplicated(keep='first')]
+    
+    # Reorder the index such that 'member1' is always lexicographically smaller than 'member2'
+    df.index = df.index.map(lambda ix: (ix[0], min(ix[1], ix[2]), max(ix[1], ix[2])))
+    df.index.names = ['datetime', 'member1', 'member2']
+
+    # For cases where we had proximity data coming from both sides,
+    # we take the average RSSI weighted by the counts, and the sum of the counts
+    df['rssi'] *= df['count']
+    df = df.groupby(level=df.index.names).sum()
+    df['rssi'] /= df['count']
+
+    # Select only the fields 'rssi' and 'count'
+    return df[['rssi', 'count']]
+
+
+def member_to_beacon_proximity(proximity_data, beacons):
+    """Creates a member-to-beacon proximity data DataFrame from the raw
+    proximity data.
+    
+    Parameters
+    ----------
+    proximity_data : pandas.DataFrame
+        The raw proximity data, as returned by
+        `load_proximity_data_from_logs`.
+    
+    beacons : list of str
+        A list of beacon ids.
+    
+    Returns
+    -------
+    pandas.DataFrame :
+        The member-to-member proximity data.
+    """
+    
+    df = proximity_data.copy()
     
     # Remove voltage
     del df['voltage']
     
-    # Rename `member` to `member1`
-    df['member1'] = df['member']
-    del df['member']
+    # Rename 'observed_id' to 'beacon'
+    df = df.rename_axis(['datetime', 'member', 'beacon'])
     
-    # Convert observed id to member name
-    df['member2'] = df.apply(lambda row: id_mapping.get(row['observed_id'], None), axis=1)
-    del df['observed_id']
-    
-    # Filter out the beacons (i.e. those ids that did not have a mapping)
-    df.dropna(axis=0, subset=['member2'], inplace=True)
-    
-    # Sort the values
-    df.sort_values(['datetime', 'member1', 'member2'], inplace=True)
-    
-    df = df.groupby(['datetime', 'member1', 'member2']).mean()  # In case we have multiple observations
-    
-    return df
-
-
-def dyadic_proximity(m2m, time_bin='1min'):
-	"""Extracts a single RSSI measure per dyad and time bin, from the
-	member-to-member proximity data.
-	
-	In the case where two or more values exist for a single time bin (i.e.
-	the two badges "saw" each other during that time bin), the largest value
-	is selected, as advised by Sekara, V. & Lehmann, S. The strength of
-	friendship ties in proximity sensor data. PLoS One 9, e100915 (2014).
-	
-	Parameter
-	---------
-	m2m : DataFrame
-		Member-to-member proximity data, as returned by
-		`member_to_member_proximity`.
-	
-	time_bin : str
-		The size of the time bins to use, e.g. '1min', '5min', etc.  Defaults
-		to '1min'.
-	
-	Returns
-	-------
-	DataFrame :
-		An RSSI value for each dyad (order-less pair of members), for each
-		time bin.
-	"""
-	
-	df = m2m.copy().reset_index()
-	
-	# Build a list of dyads from the columns 'member1' and 'member2'
-	# Dyads are represented as `frozenset`, which are nothing more than
-	# constant (and hence, python-hashable) sets
-	df['dyad'] = [frozenset(tpl) if len(set(tpl)) == 2 else np.nan for tpl in zip(df['member1'], df['member2'])]
-	
-	# Drop those dyads that have a single value
-	df.dropna(inplace=True)
-	
-	df = df[['dyad', 'datetime', 'rssi']]
-	
-	# Group by dyad, resample and select maximum value
-	df = df.set_index('datetime').groupby(['dyad', pd.TimeGrouper(time_bin)]).max()
-
-	return df
+    # Filter out ids that are not in `beacons`
+    return df.loc[pd.IndexSlice[:, :, beacons],:]
 
