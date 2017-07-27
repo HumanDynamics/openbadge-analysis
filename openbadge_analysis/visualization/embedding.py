@@ -1,70 +1,81 @@
 import numpy as np
 import pandas as pd
-from sklearn.manifold import MDS, TSNE
+from sklearn.manifold import MDS
 
 
-# TODO: make this more general, give the possibility to specify the column and whether it is
-# a similarity or a distance
-def members_2d_embedding(m2m, self_sym_factor=1.2):
-    """Computes a 2D embedding of the members using aggregated count values.
+def rssi_to_distance(rssi):
+    """Computes a distance in meters from an RSSI value.
+
+    Parameters
+    ----------
+    rssi : number or array
+        The RSSI value, or an array of RSSI values.
+    
+    Returns
+    -------
+    number or array :
+        The distance, or an array of distances, measured in meters.
+    """
+    # TODO: find the *actual* values for P and n
+    P = -60
+    n = 2.5
+    return np.power(10, (P - rssi)/(10*n))
+
+
+def members_2d_embedding(m2m, random_state=0):
+    """Computes a 2D embedding of the members using aggregated distances.
     
     Parameters
     ----------
-    m2m : DataFrame
-        Count values aggregated over pairs of members.  This can be obtained with `groupby` over the
-        member-to-member proximity data.
-    
-    self_sym_factor : float
-        The self-symilarity factor.  See the source for more information.
+    m2m : pandas.DataFrame
+        Member-to-member proximity data, indexed by 'datetime', 'member1', and 'member2'.
+
+    random_state : int
+        The seed used by sklearn when computing the embedding.
     
     Returns
     -------
     DataFrame :
         The (x, y) coordinates of each member.
     """
+
+    # Compute the distances using the RSSI values
+    distances = rssi_to_distance(m2m['rssi'])
+
+    # Add redundant data so the pivoted dataframe will be symmetrical
+    distances = distances.append(distances.reorder_levels(['datetime', 'member2', 'member1']))
+
+    # Average distances over time
+    distances = distances.groupby(['member1', 'member2']).mean()
     
-    # Pivot the data to get a table of count value for each pair of member
-    count_table = m2m.reset_index().pivot(index='member1', columns='member2', values='count')
+    # Pivot the dataframe and fill the missing values with the maximum distance
+    # This choice for filling the NAs is completely arbitrary, and was not based on
+    # any research
+    # TODO: it would probably be good to investigate this, and to try and see
+    # whether there is a better way to do things
+    pivoted = distances.unstack().fillna(distances.max())
+
+    # Make sure that the indices and columns are the same and in the same order, so we can use
+    # `as_matrix()` to pass the distances to sklearn
+    members = list(set(pivoted.columns).intersection(pivoted.index.values))
+    pivoted = pivoted.loc[members]
+    pivoted = pivoted[members]
+    pivoted = pivoted.sort_index(axis=0).sort_index(axis=1)
+
+    # Convert the pivoted dataframe to a matrix
+    M = pivoted.as_matrix()
     
-    # Restrict the indices and columns to only those members that appear in both
-    # This ensures that we won't have a member who only appears as a column or as a row
-    members = list(set(count_table.columns).intersection(count_table.index.values))
-    count_table = count_table.loc[members]
-    count_table = count_table[members]
-    
-    # No data means count = 0
-    count_table.fillna(0.0, inplace=True)
-    
-    # Sort the column names and index values, such that a given member occupies the same column and row index
-    # This is very important, as the next step is to drop the index/column names altogether for the MDS
-    count_table = count_table.sort_index(axis=0).sort_index(axis=1)
-    
-    
-    # Get the matrix from the table
-    # This is not a similarity matrix, because the diagonal is zero
-    M = count_table.as_matrix()
-    M = M + M.transpose()  # Make it symmetric
-    
-    # This is a somewhat arbitrary value for the self-similarity of a member
-    # It is defined as the maximum similarity found in the matrix, multiplied by an arbitrary factor
-    # The greater this factor, the greater the minimum distance between two very similar (close) members
-    self_sym = M.max().max()*self_sym_factor
-    
-    # Convert the matrix to a similarity matrix, by setting the diagonal to `self_sym`
-    M = M + np.eye(*M.shape)*self_sym
-    
-    # Convert it to a distance matrix
-    M = self_sym - M
-    
-    
-    # Using the multidimensional scaling model from sklearn,
-    # we produce a 2d embedding of the data from the distance matrix
-    mds = MDS(metric=True, dissimilarity='precomputed', random_state=0)
+    # Fill the diagonal with 0s
+    np.fill_diagonal(M, 0.0)
+
+    # Compute the 2D embedding using multidimensional scaling
+    mds = MDS(dissimilarity='precomputed', random_state=random_state)
     positions = mds.fit_transform(M)
-    
+
     # Return a dataframe of 2d coordinates associated to each member
     return pd.DataFrame.from_records(
         positions,
-        index=count_table.index.values,
+        index=pivoted.index.values,
         columns=('x', 'y')
     ).rename_axis('member')
+
