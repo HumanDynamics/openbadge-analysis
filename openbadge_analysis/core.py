@@ -293,7 +293,7 @@ def mac_address_to_id(mac):
     return crc
 
 
-def load_member_badges_from_logs(logs, log_version=None, log_kind='audio', time_bins_size='1min'):
+def load_member_badges_from_logs(logs, log_version=None, log_kind='audio', time_bins_size='1min', tz='US/Eastern'):
     """Extracts the badge address and id of every badge used by each member, at each moment,
     for a given time bins size.
     
@@ -324,36 +324,49 @@ def load_member_badges_from_logs(logs, log_version=None, log_kind='audio', time_
         load_chunks = load_proximity_chunks_as_json_objects
     else:
         raise ValueError("Log kind {} not recoginzed".format(kind))
+
+    fulldf = pd.DataFrame(columns=(
+        'datetime', 'member', 'badge_address', 'id'
+    ))
+
+    fulldf['datetime'] = pd.to_datetime(fulldf['datetime'], unit='s', utc=True) \
+                       .dt.tz_localize('UTC').dt.tz_convert(tz)
     
     # Load chunks
     # A chunk contains a set of observations by a given badge at a given timestamp
-    chunks = []
     for filename in logs:
+        chunks = []
         with open(filename, 'r') as f:
             chunks.extend(load_chunks(f, log_version=log_version))
 
-    # Extract relevant information from chunks, i.e. member and id (from address)
-    data = [(
-        chunk['member'],
-        chunk['badge_address'],
-        mac_address_to_id(chunk['badge_address']),
-        chunk['timestamp']
-    ) for chunk in chunks]
+        # Extract relevant information from chunks, i.e. member and id (from address)
+        data = [(
+            chunk['member'],
+            chunk['badge_address'],
+            mac_address_to_id(chunk['badge_address']),
+            chunk['timestamp']
+        ) for chunk in chunks]
 
-    # Encapsulate the data in a DataFrame indexed by id
-    df = pd.DataFrame(data, columns=(
-        'member', 'badge_address', 'id', 'timestamp'
-    )).drop_duplicates()
+        # Encapsulate the data in a DataFrame
+        df = pd.DataFrame(data, columns=(
+            'member', 'badge_address', 'id', 'timestamp'
+        )).drop_duplicates()
 
-    # Convert the timestamp to a datetime, localized in UTC
-    df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True).dt.tz_localize('UTC')
-    del df['timestamp']
+        del data
+
+        # Convert the timestamp to a datetime, localized in UTC
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True) \
+                .dt.tz_localize('UTC').dt.tz_convert(tz)
+        del df['timestamp']
+
+        fulldf = fulldf.append(df)
+        del df
     
     # Group by id and resample
-    df = df.groupby([
+    fulldf = fulldf.groupby([
         pd.TimeGrouper(time_bins_size, key='datetime'),
         'id'
     ]).first()
     
-    return df
+    return fulldf
 

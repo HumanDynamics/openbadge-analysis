@@ -3,7 +3,85 @@ import numpy as np
 from ..core import load_proximity_chunks_as_json_objects
 
 
-def load_proximity_data_from_logs(logs, log_version=None, time_bins_size='1min'):
+def load_proximity_data_from_logs(logs, log_version=None, time_bins_size='1min', tz='US/Eastern'):
+    """Creates a resampled proximity DataFrame from a set of proximity logs.
+    
+    Parameters
+    ----------
+    logs : list of str
+        The paths to the proximity logs.
+    
+    log_version : str or None
+        The version of the logs, in case the files are missing a header.
+    
+    time_bins_size : str
+        The size, in units of time, of the time bins used for the resampling.
+        Defaults to '1min', the resolution of the badges.
+    
+    Returns
+    -------
+    pandas.DataFrame :
+        A pandas DataFrame with each row containing a single proximity record.
+    """
+
+    prox = pd.DataFrame(columns=(
+        'datetime', 'member', 'voltage', 'observed_id', 'rssi', 'count'
+    ))
+
+    prox['datetime'] = pd.to_datetime(prox['datetime'], unit='s', utc=True) \
+                       .dt.tz_localize('UTC').dt.tz_convert(tz)
+    
+    # Load proximity chunks
+    # A chunk contains a set of observations by a given badge at a given timestamp
+    for filename in logs:
+        chunks = []
+        with open(filename, 'r') as f:
+            chunks.extend(load_proximity_chunks_as_json_objects(f, log_version=log_version))
+        
+        proximity_data = []
+        for chunk in chunks:
+            # Iterate over each observation in the chunk
+            for (mid, distance) in chunk['rssi_distances'].items():
+                proximity_data.append((
+                    chunk['timestamp'],
+                    chunk['member'],
+                    chunk['voltage'],
+                    int(mid),  # The id of the observed badge
+                    distance['rssi'],
+                    distance['count'],
+                ))
+
+        df = pd.DataFrame(proximity_data, columns=(
+            'timestamp', 'member', 'voltage', 'observed_id', 'rssi', 'count'
+        ))
+        del proximity_data
+
+        # Convert timestamp to datetime for convenience, and localize to UTC
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True) \
+                           .dt.tz_localize('UTC').dt.tz_convert(tz)
+        del df['timestamp']
+
+        prox = prox.append(df)
+        del df
+
+    # Group per time bins, member and observed_id,
+    # and take the first value, arbitrarily
+    prox = prox.groupby([
+        pd.TimeGrouper(time_bins_size, key='datetime'),
+        'member',
+        'observed_id'
+    ]).first()
+#    ]).apply(
+#        lambda df: df.loc[df['rssi'].idxmax()]
+#    )
+    
+    # Sort the data
+    prox.sort_index(inplace=True)
+
+    return prox
+
+
+def _load_proximity_data_from_logs(logs, log_version=None, time_bins_size='1min'):
     """Creates a resampled proximity DataFrame from a set of proximity logs.
     
     Parameters
