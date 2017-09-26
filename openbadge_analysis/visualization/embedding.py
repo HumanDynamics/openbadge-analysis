@@ -66,65 +66,7 @@ def coords_to_distance(coords):
     return distances['distance']
 
 
-def _members_2d_embedding(m2m, random_state=0):
-    """Computes a 2D embedding of the members using aggregated distances.
-    
-    Parameters
-    ----------
-    m2m : pd.DataFrame
-        Member-to-member proximity data, indexed by 'datetime', 'member1', and 'member2'.
-
-    random_state : int
-        The seed used by sklearn when computing the embedding.
-    
-    Returns
-    -------
-    DataFrame :
-        The (x, y) coordinates of each member.
-    """
-
-    # Compute the distances using the RSSI values
-    distances = rssi_to_distance(m2m['rssi'])
-
-    # Add redundant data so the pivoted dataframe will be symmetrical
-    distances = distances.append(distances.reorder_levels(['datetime', 'member2', 'member1']))
-
-    # Average distances over time
-    distances = distances.groupby(['member1', 'member2']).mean()
-    
-    # Pivot the dataframe and fill the missing values with the maximum distance
-    # This choice for filling the NAs is completely arbitrary, and was not based on
-    # any research
-    # TODO: it would probably be good to investigate this, and to try and see
-    # whether there is a better way to do things
-    pivoted = distances.unstack().fillna(distances.max())
-
-    # Make sure that the indices and columns are the same and in the same order, so we can use
-    # `as_matrix()` to pass the distances to sklearn
-    members = list(set(pivoted.columns).intersection(pivoted.index.values))
-    pivoted = pivoted.loc[members]
-    pivoted = pivoted[members]
-    pivoted = pivoted.sort_index(axis=0).sort_index(axis=1)
-
-    # Convert the pivoted dataframe to a matrix
-    M = pivoted.as_matrix()
-    
-    # Fill the diagonal with 0s
-    np.fill_diagonal(M, 0.0)
-
-    # Compute the 2D embedding using multidimensional scaling
-    mds = MDS(dissimilarity='precomputed', random_state=random_state)
-    positions = mds.fit_transform(M)
-
-    # Return a dataframe of 2d coordinates associated to each member
-    return pd.DataFrame.from_records(
-        positions,
-        index=pivoted.index.values,
-        columns=('x', 'y')
-    ).rename_axis('member')
-
-
-def members_2d_embedding(m2m, prev=None, P=-61.5, n=2.6, random_state=0):
+def members_2d_embedding(m2m, prev=None, P=-61.5, n=2.6, method='weighted', random_state=0):
     """Computes a 2D embedding of the members through multidimensional scaling.
     
     Parameters
@@ -140,6 +82,9 @@ def members_2d_embedding(m2m, prev=None, P=-61.5, n=2.6, random_state=0):
     P : float
     n : float
         The parameters for `rssi_to_distance`.
+    
+    method : str
+        The method used to compute the embedding.  Either 'weighted' or 'sklearn'.  Defaults to 'weighted'.
 
     random_state : None, int or np.random.RandomState
         The seed/RNG used by sklearn when computing the embedding.  Defaults to None.
@@ -182,24 +127,32 @@ def members_2d_embedding(m2m, prev=None, P=-61.5, n=2.6, random_state=0):
     # the members first and the beacons second
     D = dist_matrix.loc[map(str, members), map(str, members)].as_matrix()
     
-    # The weight matrix is set to 0. for missing values, and 1. everywhere else
-    W = 1 - np.isnan(D)
+    if method == 'weighted':
+        # The weight matrix is set to 0. for missing values, and 1. everywhere else
+        W = 1 - np.isnan(D)
 
-    # Missing values in `D`
-    D[np.isnan(D)] = 0.0  # Arbitrary value; those distances are ignored anyway
-    
-    init = None
-    # If previous values were given for the members positions
-    if prev is not None:
-        # Select those that match our list of members
-        prev = prev.loc[members]
-        # Fill the NA's with random values
-        prev = prev.fillna(pd.DataFrame(random_state.randn(*np.isnan(previous).shape),
-                                        index=members, columns=['x', 'y']))
-        init = prev.as_matrix()
+        # Missing values in `D`
+        D[np.isnan(D)] = 0.0  # Arbitrary value; those distances are ignored anyway
         
-    # Compute the embedding using the SMACOF algorithm
-    positions = smacof(D, weights=W, init=init, random_state=random_state)
+        init = None
+        # If previous values were given for the members positions
+        if prev is not None:
+            # Select those that match our list of members
+            prev = prev.loc[members]
+            # Fill the NA's with random values
+            prev = prev.fillna(pd.DataFrame(random_state.randn(*np.isnan(previous).shape),
+                                            index=members, columns=['x', 'y']))
+            init = prev.as_matrix()
+            
+        # Compute the embedding using the SMACOF algorithm
+        positions = smacof(D, weights=W, init=init, random_state=random_state)
+    
+    elif method == 'sklearn':
+        D[np.isnan(D)] = D[~np.isnan(D)].max().max()
+        positions = MDS(dissimilarity='precomputed', random_state=random_state).fit_transform(D)
+    
+    else:
+        raise ValueError("method not recognized")
     
     # Return a dataframe of 2d coordinates associated to each member
     return pd.DataFrame(
