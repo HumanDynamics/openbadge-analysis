@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import itertools
 import datetime
+import crc16
 
 
 def is_meeting_metadata(json_record):
@@ -53,9 +54,12 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None):
     elif log_version == '2.0':
         batched_sample_data = []
         for row in raw_data[first_data_row:]:
-            data = json.loads(row)
-            if data['type'] == 'audio received':
-                batched_sample_data.append(data['data'])
+            try:
+                data = json.loads(row)
+                if data['type'] == 'audio received':
+                    batched_sample_data.append(data['data'])
+            except ValueError:
+                continue
 
     else:
         raise Exception('file log version was not set and cannot be identified')
@@ -84,9 +88,12 @@ def load_proximity_chunks_as_json_objects(file_object, log_version=None):
     elif log_version == '2.0':
         batched_sample_data = []
         for row in raw_data[first_data_row:]:
-            data = json.loads(row)
-            if data['type'] == 'proximity received':
-                batched_sample_data.append(data['data'])
+            try:
+                data = json.loads(row)
+                if data['type'] == 'proximity received':
+                    batched_sample_data.append(data['data'])
+            except ValueError:
+                continue
 
     else:
         raise Exception('file log version was not set and cannot be identified')
@@ -275,3 +282,91 @@ def total_turns(df_stitched):
     df_turns.duration = duration
     #columns: member, totalSpeakingTime, totalTurns for each member
     return df_turns
+
+
+def mac_address_to_id(mac):
+    """Converts a MAC address to an id used by the badges for the proximity pings.
+    """
+    # convert hex to bytes and reverse
+    macstr = mac.replace(':', '').decode('hex')[::-1]
+    crc = crc16.crc16xmodem(macstr,0xFFFF)
+    return crc
+
+
+def load_member_badges_from_logs(logs, log_version=None, log_kind='audio', time_bins_size='1min', tz='US/Eastern'):
+    """Extracts the badge address and id of every badge used by each member, at each moment,
+    for a given time bins size.
+    
+    Parameters
+    ----------
+    logs : list of str
+        Paths to (audio or proximity) logs used to extract the addresses.
+    
+    log_version : str or None
+        The version of the logs, in case the files are missing a header.
+    
+    log_kind : 'audio' or 'proximity'
+        Whether the logs are audio logs or proximity logs.
+    
+    time_bins_size : str
+        The size, in units of time, of the time bins used for the resampling.
+        Defaults to '1min', the resolution of the badges
+    
+    Returns
+    -------
+    DataFrame :
+        The id, MAC address and owner of each badge that appeared in `logs`.
+    """
+    
+    if log_kind == 'audio':
+        load_chunks = load_audio_chunks_as_json_objects
+    elif log_kind == 'proximity':
+        load_chunks = load_proximity_chunks_as_json_objects
+    else:
+        raise ValueError("Log kind {} not recoginzed".format(kind))
+
+    fulldf = pd.DataFrame(columns=(
+        'datetime', 'member', 'badge_address', 'id'
+    ))
+
+    fulldf['datetime'] = pd.to_datetime(fulldf['datetime'], unit='s', utc=True) \
+                       .dt.tz_localize('UTC').dt.tz_convert(tz)
+    
+    # Load chunks
+    # A chunk contains a set of observations by a given badge at a given timestamp
+    for filename in logs:
+        chunks = []
+        with open(filename, 'r') as f:
+            chunks.extend(load_chunks(f, log_version=log_version))
+
+        # Extract relevant information from chunks, i.e. member and id (from address)
+        data = [(
+            chunk['member'],
+            chunk['badge_address'],
+            mac_address_to_id(chunk['badge_address']),
+            chunk['timestamp']
+        ) for chunk in chunks]
+
+        # Encapsulate the data in a DataFrame
+        df = pd.DataFrame(data, columns=(
+            'member', 'badge_address', 'id', 'timestamp'
+        )).drop_duplicates()
+
+        del data
+
+        # Convert the timestamp to a datetime, localized in UTC
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True) \
+                .dt.tz_localize('UTC').dt.tz_convert(tz)
+        del df['timestamp']
+
+        fulldf = fulldf.append(df)
+        del df
+    
+    # Group by id and resample
+    fulldf = fulldf.groupby([
+        pd.TimeGrouper(time_bins_size, key='datetime'),
+        'id'
+    ]).first()
+    
+    return fulldf
+

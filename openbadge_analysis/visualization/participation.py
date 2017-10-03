@@ -1,6 +1,7 @@
 import ast
 import pandas as pd
 import openbadge_analysis as ob
+import openbadge_analysis.core
 
 from bokeh.plotting import *
 from bokeh.charts import Bar, output_file, show
@@ -102,7 +103,7 @@ def percentage_participation(df_stitched_all, labels, member_names=None):
             continue
         df = pd.DataFrame()
         for df_stitched in df_stitched_list:
-            df_turns = ob.total_turns(df_stitched)
+            df_turns = ob.core.total_turns(df_stitched)
             df_turns.set_index('member', inplace=True)
             df = df.add(df_turns, fill_value=0)
 
