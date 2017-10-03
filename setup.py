@@ -27,6 +27,8 @@ setup(
     url='https://github.com/orenlederman/openbadge_analysis',
     packages=[
         'openbadge_analysis',
+        'preprocessing',
+        'visualization',
     ],
     package_dir={'openbadge_analysis':
                  'openbadge_analysis'},
