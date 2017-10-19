@@ -4,6 +4,8 @@ import numpy as np
 import itertools
 import datetime
 import traceback
+import crc16
+
 
 def is_meeting_metadata(json_record):
     """
@@ -32,6 +34,38 @@ def meeting_log_version(meeting_metadata):
     return log_version
 
 
+def meeting_log_version_from_file(file_object):
+    """
+        returns version number for a given file object (or None, if version cannot be identified)
+        :param file_object:
+        :return:
+    """
+    last_pos = file_object.tell() # keep current position
+    first_line = file_object.readline()
+    file_object.seek(last_pos) # rewind
+    meeting_metadata = json.loads(first_line)  # Convert the header string into a json object
+    if is_meeting_metadata(meeting_metadata):
+        return meeting_log_version(meeting_metadata)
+    else:
+        return None
+
+
+def metadata_from_file(file_object):
+    """
+        Returns metadata from file (or None if no metadata)
+        :param file_object:
+        :return:
+    """
+    last_pos = file_object.tell() # keep current position
+    first_line = file_object.readline()
+    file_object.seek(last_pos) # rewind
+    meeting_metadata = json.loads(first_line)  # Convert the header string into a json object
+    if is_meeting_metadata(meeting_metadata):
+        return meeting_metadata
+    else:
+        return None
+
+
 def load_audio_chunks_as_json_objects(file_object, log_version=None, ignore_errors=True):
     """
     Loads an audio chunks as jason objects
@@ -41,10 +75,11 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None, ignore_erro
     :return:
     """
     first_data_row = 0 # some file may contain meeting information/header
+    meeting_metadata = meeting_log_version_from_file(file_object)
 
     raw_data = file_object.readlines()           # This is a list of strings
-    meeting_metadata = json.loads(raw_data[0])  # Convert the header string into a json object
-    if is_meeting_metadata(meeting_metadata):
+
+    if meeting_metadata is not None:
         first_data_row = 1 # skip the header
         log_version = meeting_log_version(meeting_metadata)
 
@@ -52,8 +87,8 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None, ignore_erro
         batched_sample_data = map(json.loads, raw_data[first_data_row:])  # Convert the raw sample data into a json object
 
     elif log_version == '2.0':
+        c = 0
         batched_sample_data = []
-        c = 0;
         for row in raw_data[first_data_row:]:
             c += 1
             try:
@@ -64,6 +99,7 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None, ignore_erro
                 s = traceback.format_exc()
                 if ignore_errors:
                     print("unexpected failure in line {}, skipping it ({})".format(c, e))
+                    continue
                 else:
                     print("unexpected failure in line {}, {} ,{}".format(c, e, s))
                     raise
@@ -82,10 +118,11 @@ def load_proximity_chunks_as_json_objects(file_object, log_version=None):
     :return:
     """
     first_data_row = 0 # some file may contain meeting information/header
+    meeting_metadata = meeting_log_version_from_file(file_object)
 
     raw_data = file_object.readlines()           # This is a list of strings
-    meeting_metadata = json.loads(raw_data[0])  # Convert the header string into a json object
-    if is_meeting_metadata(meeting_metadata):
+
+    if meeting_metadata is not None:
         first_data_row = 1 # skip the header
         log_version = meeting_log_version(meeting_metadata)
 
@@ -95,9 +132,12 @@ def load_proximity_chunks_as_json_objects(file_object, log_version=None):
     elif log_version == '2.0':
         batched_sample_data = []
         for row in raw_data[first_data_row:]:
-            data = json.loads(row)
-            if data['type'] == 'proximity received':
-                batched_sample_data.append(data['data'])
+            try:
+                data = json.loads(row)
+                if data['type'] == 'proximity received':
+                    batched_sample_data.append(data['data'])
+            except ValueError:
+                continue
 
     else:
         raise Exception('file log version was not set and cannot be identified')
@@ -105,33 +145,27 @@ def load_proximity_chunks_as_json_objects(file_object, log_version=None):
     return batched_sample_data
 
 
-def sample2data(input_file_path, datetime_index=True, resample=True, log_version=None):
-
+def sample2data(input_file_path, datetime_index=True, resample=True, log_version=None, ignore_errors=True):
+    """
+    Loads audio data form file and converts it to audio samples.
+    Note that this method is somewhat old and needs to be re-written. In particular, it currently converted timestamps
+    into EST time by deducting 4 hours
+    :param input_file_path:
+    :param datetime_index:
+    :param resample:
+    :param log_version:
+    :param ignore_errors:
+    :return:
+    """
     with open(input_file_path,'r') as input_file:
-        raw_data = input_file.readlines() #This is a list of strings
-        meeting_metadata = json.loads(raw_data[0]) #Convert the header string into a json object
-        if 'data' in meeting_metadata:
-            if 'log_version' in meeting_metadata['data']:
-                log_version = meeting_metadata['data']['log_version']
-        else:
-            log_version = '1.0'
-
-    if log_version == '1.0':
-
-        batched_sample_data = map(json.loads,raw_data[1:]) #Convert the raw sample data into a json object
-
-    elif log_version == '2.0':
-
-        batched_sample_data = []
-        for row in raw_data[1:]:
-            data = json.loads(row)
-            if data['type'] == 'audio received':
-                batched_sample_data.append(data['data'])
-
-    else:
-        raise Exception('file log version was not set and cannot be identified')
+        log_version_from_file = meeting_log_version_from_file(input_file)
+        meeting_metadata = metadata_from_file(input_file)
+        batched_sample_data = load_audio_chunks_as_json_objects(input_file, log_version, ignore_errors)
 
     sample_data = []
+
+    if log_version is None:
+        log_version = log_version_from_file
 
     for j in range(len(batched_sample_data)):
         batch = {}
@@ -157,7 +191,7 @@ def sample2data(input_file_path, datetime_index=True, resample=True, log_version
     if len(sample_data)==0:
         return None
     df_sample_data['datetime'] = pd.to_datetime(df_sample_data['timestamp'], unit='ms')
-    df_sample_data['datetime'] = df_sample_data['datetime'] - np.timedelta64(4, 'h')
+    df_sample_data['datetime'] = df_sample_data['datetime'] - np.timedelta64(4, 'h') # note - hard coded EST time conversion
     del df_sample_data['timestamp']
 
     df_sample_data.sort_values('datetime')
@@ -286,3 +320,91 @@ def total_turns(df_stitched):
     df_turns.duration = duration
     #columns: member, totalSpeakingTime, totalTurns for each member
     return df_turns
+
+
+def mac_address_to_id(mac):
+    """Converts a MAC address to an id used by the badges for the proximity pings.
+    """
+    # convert hex to bytes and reverse
+    macstr = mac.replace(':', '').decode('hex')[::-1]
+    crc = crc16.crc16xmodem(macstr,0xFFFF)
+    return crc
+
+
+def load_member_badges_from_logs(logs, log_version=None, log_kind='audio', time_bins_size='1min', tz='US/Eastern'):
+    """Extracts the badge address and id of every badge used by each member, at each moment,
+    for a given time bins size.
+    
+    Parameters
+    ----------
+    logs : list of str
+        Paths to (audio or proximity) logs used to extract the addresses.
+    
+    log_version : str or None
+        The version of the logs, in case the files are missing a header.
+    
+    log_kind : 'audio' or 'proximity'
+        Whether the logs are audio logs or proximity logs.
+    
+    time_bins_size : str
+        The size, in units of time, of the time bins used for the resampling.
+        Defaults to '1min', the resolution of the badges
+    
+    Returns
+    -------
+    DataFrame :
+        The id, MAC address and owner of each badge that appeared in `logs`.
+    """
+    
+    if log_kind == 'audio':
+        load_chunks = load_audio_chunks_as_json_objects
+    elif log_kind == 'proximity':
+        load_chunks = load_proximity_chunks_as_json_objects
+    else:
+        raise ValueError("Log kind {} not recoginzed".format(log_kind))
+
+    fulldf = pd.DataFrame(columns=(
+        'datetime', 'member', 'badge_address', 'id'
+    ))
+
+    fulldf['datetime'] = pd.to_datetime(fulldf['datetime'], unit='s', utc=True) \
+                       .dt.tz_localize('UTC').dt.tz_convert(tz)
+    
+    # Load chunks
+    # A chunk contains a set of observations by a given badge at a given timestamp
+    for filename in logs:
+        chunks = []
+        with open(filename, 'r') as f:
+            chunks.extend(load_chunks(f, log_version=log_version))
+
+        # Extract relevant information from chunks, i.e. member and id (from address)
+        data = [(
+            chunk['member'],
+            chunk['badge_address'],
+            mac_address_to_id(chunk['badge_address']),
+            chunk['timestamp']
+        ) for chunk in chunks]
+
+        # Encapsulate the data in a DataFrame
+        df = pd.DataFrame(data, columns=(
+            'member', 'badge_address', 'id', 'timestamp'
+        )).drop_duplicates()
+
+        del data
+
+        # Convert the timestamp to a datetime, localized in UTC
+        df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True) \
+                .dt.tz_localize('UTC').dt.tz_convert(tz)
+        del df['timestamp']
+
+        fulldf = fulldf.append(df)
+        del df
+    
+    # Group by id and resample
+    fulldf = fulldf.groupby([
+        pd.TimeGrouper(time_bins_size, key='datetime'),
+        'id'
+    ]).first()
+    
+    return fulldf
+

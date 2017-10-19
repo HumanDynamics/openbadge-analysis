@@ -6,3 +6,6 @@ pandas
 seaborn
 bokeh==0.12.1
 ggplot
+networkx
+crc16
+sklearn

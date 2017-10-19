@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open('README.rst') as readme_file:
     readme = readme_file.read()
@@ -19,15 +19,13 @@ test_requirements = [
 
 setup(
     name='openbadge_analysis',
-    version='0.1.0',
+    version='0.3.1',
     description="Python libraries for analysing OpenBadge data",
     long_description=readme + '\n\n' + history,
     author="Oren Lederman",
     author_email='orenled@mit.edu',
     url='https://github.com/orenlederman/openbadge_analysis',
-    packages=[
-        'openbadge_analysis',
-    ],
+    packages=find_packages(),
     package_dir={'openbadge_analysis':
                  'openbadge_analysis'},
     include_package_data=True,

@@ -18,7 +18,9 @@ OpenBadge Analysis
      :alt: Updates
 
 
-Python libraries for analysing OpenBadge data
+Python libraries for analysing OpenBadge data. See examples in the `examples repository`_
+
+.. _examples repository: https://github.com/HumanDynamics/openbadge-analysis-examples
 
 
 * Free software: MIT license
