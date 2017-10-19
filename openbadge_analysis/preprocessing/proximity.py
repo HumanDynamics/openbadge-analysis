@@ -96,7 +96,12 @@ def member_to_member_proximity(m2badge, id2m):
 
     # Remove duplicate indexes, keeping the first (arbitrarily)
     df = df[~df.index.duplicated(keep='first')]
-    
+
+    # If the dataframe is empty after the join, we can (and should) stop
+    # here
+    if len(df) == 0:
+        return df
+
     # Reorder the index such that 'member1' is always lexicographically smaller than 'member2'
     df.index = df.index.map(lambda ix: (ix[0], min(ix[1], ix[2]), max(ix[1], ix[2])))
     df.index.names = ['datetime', 'member1', 'member2']
