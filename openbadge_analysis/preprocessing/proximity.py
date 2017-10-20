@@ -107,13 +107,20 @@ def member_to_member_proximity(m2badge, id2m):
     df.index.names = ['datetime', 'member1', 'member2']
 
     # For cases where we had proximity data coming from both sides,
-    # we take the average RSSI weighted by the counts, and the sum of the counts
-    df['rssi'] *= df['count']
-    df = df.groupby(level=df.index.names).sum()
-    df['rssi'] /= df['count']
+    # we calculate two types of rssi:
+    # * weighted_mean - take the average RSSI weighted by the counts, and the sum of the counts
+    # * max - take the max value
+    df['rssi_weighted'] = df['count'] * df['rssi']
+    agg_f = {'rssi': ['max'], 'rssi_weighted': ['sum'], 'count': ['sum']}
+    df = df.groupby(level=df.index.names).agg(agg_f)
+    df['rssi_weighted'] /= df['count']
+
+    # rename columnes
+    df.columns = ['count_sum', 'rssi_max', 'rssi_weighted_mean']
+    df['rssi'] = df['rssi_weighted_mean']  # for backward compatibility
 
     # Select only the fields 'rssi' and 'count'
-    return df[['rssi', 'count']]
+    return df[['rssi', 'rssi_max', 'rssi_weighted_mean', 'count_sum']]
 
 
 def _member_to_beacon_proximity(m2badge, beacons):
