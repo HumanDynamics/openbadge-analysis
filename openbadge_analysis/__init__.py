@@ -2,7 +2,7 @@
 
 __author__ = 'Oren Lederman'
 __email__ = 'orenled@mit.edu'
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 __all__ = ["core", "data", "preprocessing", "visualization", "analysis"]
 
