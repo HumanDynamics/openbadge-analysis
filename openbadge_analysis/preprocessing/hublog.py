@@ -4,6 +4,12 @@ import pandas as pd
 import re
 import ast
 
+log_pattern = re.compile("^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+ - \w+ - .*$")
+
+
+def _is_legal_log_line(line):
+    return log_pattern.match(line) is not None
+
 
 def _hublog_read_scan_line(line):
     """ Parses a single scan line from a hub log
@@ -28,6 +34,12 @@ def _hublog_read_scan_line(line):
     # remove end of line
     line = line.rstrip("\n\r")
 
+    # Filter out rows with illegal structure
+    if not _is_legal_log_line(line):
+        return None
+
+
+    # parse
     data = line.split(" - ")[2]
 
     if not data.startswith("Found"):
@@ -77,6 +89,7 @@ def hublog_scans(fileobject, log_tz, tz='US/Eastern'):
 
     def readfile(fileobject):
         for line in fileobject:
+            line_num = line_num + 1
             data = _hublog_read_scan_line(line)
             if data:
                 yield (data['datetime'],
@@ -123,6 +136,11 @@ def _hublog_read_sync_line(line):
     # remove end of line
     line = line.rstrip("\n\r")
 
+    # Filter out rows with illegal structure
+    if not _is_legal_log_line(line):
+        return None
+
+    # Parse data
     data = line.split(" - ")[2]
 
     if not data.endswith("Badge previously unsynced."):

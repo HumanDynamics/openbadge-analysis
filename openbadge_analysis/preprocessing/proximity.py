@@ -24,7 +24,7 @@ def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'
     
     def readfile(fileobject):
         for line in fileobject:
-            data = json.loads(line)
+            data = json.loads(line)['data']
 
             for (observed_id, distance) in data['rssi_distances'].items():
                 yield (

@@ -25,7 +25,7 @@ def id_to_member_mapping(fileobject, time_bins_size='1min', tz='US/Eastern'):
     
     def readfile(fileobject):
         for line in fileobject:
-            data = json.loads(line)
+            data = json.loads(line)['data']
 
             yield (data['timestamp'],
                    mac_address_to_id(data['badge_address']),
@@ -71,7 +71,7 @@ def voltages(fileobject, time_bins_size='1min', tz='US/Eastern'):
     
     def readfile(fileobject):
         for line in fileobject:
-            data = json.loads(line)
+            data = json.loads(line)['data']
 
             yield (data['timestamp'],
                    str(data['member']),
