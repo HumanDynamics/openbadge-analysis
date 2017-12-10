@@ -77,22 +77,23 @@ def split_raw_data_by_day(fileobject, target, kind, log_version=None):
     
     # Extract log version from metadata, if present
     log_version = extract_log_version(fileobject) or log_version
+
     if log_version not in ('1.0', '2.0'):
         raise Exception('file log version was not set and cannot be identified')
+
+    if log_version in ('1.0'):
+        raise Exception('file version '+str(log_version)+'is no longer supported')
 
     # Read each line
     for line in fileobject:
         data = json.loads(line)
 
-        # Remove the v2.0 metadata
-        if log_version == '2.0':
-            if data['type'] == kind + ' received':
-                data = data['data']
-            else:
-                continue
+        # Keep only relevant data
+        if not data['type'] == kind + ' received':
+            continue
 
         # Extract the day from the timestamp
-        day = datetime.date.fromtimestamp(data['timestamp']).isoformat()
+        day = datetime.date.fromtimestamp(data['data']['timestamp']).isoformat()
 
         # If no fileobject exists for that day, create one
         if day not in days:
