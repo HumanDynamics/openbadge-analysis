@@ -27,10 +27,12 @@ Python libraries for analysing OpenBadge data. See examples in the `examples rep
 * Documentation: https://openbadge-analysis.readthedocs.io.
 
 
-Features
+
+Notes
 --------
 
-* TODO
+* To update the version, use bumpversion. For example "bumpversion patch" will increase the patch number
+* After updating the version, use "git push --tags"
 
 Credits
 ---------
