@@ -119,8 +119,8 @@ def hublog_scans(fileobject, log_tz, tz='US/Eastern'):
     return df
 
 
-def _hublog_read_sync_line(line):
-    """ Parses a single sync line from a hub log
+def _hublog_read_reset_line(line):
+    """ Parses a single reset line from a hub log
 
     Parameters
     ----------
@@ -152,8 +152,8 @@ def _hublog_read_sync_line(line):
     return sync_data
 
 
-def hublog_syncs(fileobject, log_tz, tz='US/Eastern'):
-    """Creates a DataFrame of sync events - when badge were previously not synced and
+def hublog_resets(fileobject, log_tz, tz='US/Eastern'):
+    """Creates a DataFrame of reset events - when badge were previously not synced and
         the hub sent a new date
 
     Parameters
@@ -174,7 +174,7 @@ def hublog_syncs(fileobject, log_tz, tz='US/Eastern'):
     """
     def readfile(fileobject):
         for line in fileobject:
-            data = _hublog_read_sync_line(line)
+            data = _hublog_read_reset_line(line)
             if data:
                 yield (data['datetime'],
                        str(data['mac']),
