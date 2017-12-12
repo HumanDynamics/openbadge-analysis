@@ -3,12 +3,12 @@ import json
 
 
 def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'):
-    """Creates a member-to-badge proximity DataFrame from a cleaned-up proximity data file.
+    """Creates a member-to-badge proximity DataFrame from a proximity data file.
     
     Parameters
     ----------
     fileobject : file or iterable list of str
-        The cleaned-up proximity data, as an iterable of JSON strings.
+        The proximity data, as an iterable of JSON strings.
     
     time_bins_size : str
         The size of the time bins used for resampling.  Defaults to '1min'.
