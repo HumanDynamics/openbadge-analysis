@@ -109,7 +109,7 @@ def hublog_scans(fileobject, log_tz, tz='US/Eastern'):
                                                      'project_id', 'sync_status', 'audio_status', \
                                                      'proximity_status'])
 
-    # Convert the timestamp to a datetime, localized in UTC
+    # Localized record date
     df['datetime'] = pd.to_datetime(df['datetime'], utc=True) \
         .dt.tz_localize(log_tz).dt.tz_convert(tz)
 
@@ -184,9 +184,89 @@ def hublog_resets(fileobject, log_tz, tz='US/Eastern'):
 
     df = pd.DataFrame(readfile(fileobject), columns=['datetime', 'mac'])
 
-    # Convert the timestamp to a datetime, localized in UTC
+    # Localized record date
     df['datetime'] = pd.to_datetime(df['datetime'], utc=True) \
         .dt.tz_localize(log_tz).dt.tz_convert(tz)
+
+    # Sort
+    df = df.set_index('datetime')
+    df.sort_index(inplace=True)
+    return df
+
+
+def _hublog_read_clock_sync_line(line):
+    """ Parses a single clock line from a hub log
+
+    Parameters
+    ----------
+    line : str
+        A single line of log file
+
+    Returns
+    -------
+    dictionary:
+        Parses a sync event
+
+    """
+    # remove end of line
+    line = line.rstrip("\n\r")
+
+    # look for clock syncs
+    if "Badge datetime was" not in line:
+        return None
+
+    # Parse data
+    data = re.match('(.*) - INFO - \[(.*)\] Badge datetime was: ([\d,]*)', line).group(1, 2, 3)
+
+    d = {}
+    d['datetime'] = data[0]
+    d['mac'] = data[1]
+    d['badge_timestamp'] = data[2].replace(",", ".")
+    return d
+
+
+def hublog_clock_syncs(fileobject, log_tz, tz='US/Eastern'):
+    """Creates a DataFrame of sync events - when badge were previously not synced and
+        the hub sent a new date
+
+    Parameters
+    ----------
+    fileobject : file or iterable list of str
+        The raw log file from a hub.
+
+    log_tz : str
+        The time zone used in the logfile itself
+
+    tz : str
+        The time zone used for localization of dates.  Defaults to 'US/Eastern'.
+
+    Returns
+    -------
+    pd.Series :
+        A record with mac and timestamps
+    """
+
+    def readfile(fileobject):
+        for line in fileobject:
+            data = _hublog_read_clock_sync_line(line)
+            if data:
+                yield (data['datetime'],
+                       str(data['mac']),
+                       str(data['badge_timestamp']),
+                       )
+            else:
+                continue  # skip unneeded lines
+
+    df = pd.DataFrame(readfile(fileobject), columns=['datetime', 'mac', 'badge_timestamp'])
+
+    # Localized record date
+    df['datetime'] = pd.to_datetime(df['datetime'], utc=True) \
+        .dt.tz_localize(log_tz).dt.tz_convert(tz)
+
+    # Convert the badge timestamp to a datetime, localized in UTC
+    df['badge_datetime'] = pd.to_datetime(df['badge_timestamp'], unit='s', utc=True) \
+        .dt.tz_localize('UTC').dt.tz_convert(tz)
+    del df['badge_timestamp']
 
     # Sort
     df = df.set_index('datetime')

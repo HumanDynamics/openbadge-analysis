@@ -15,3 +15,4 @@ from .proximity import member_to_beacon_proximity
 
 from .hublog import hublog_scans
 from .hublog import hublog_resets
+from .hublog import hublog_clock_syncs
