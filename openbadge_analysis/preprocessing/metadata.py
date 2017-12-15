@@ -95,16 +95,13 @@ def voltages(fileobject, time_bins_size='1min', tz='US/Eastern'):
     return df['voltage']
 
 
-def record_counts(fileobject, time_bins_size='1min', tz='US/Eastern', keep_type=False):
-    """Creates a DataFrame of record counts, for each member and time bin.
+def sample_counts(fileobject, tz='US/Eastern', keep_type=False):
+    """Creates a DataFrame of sample counts, for each member and raw record
 
     Parameters
     ----------
     fileobject : file or iterable list of str
         The proximity or audio data, as an iterable of JSON strings.
-
-    time_bins_size : str
-        The size of the time bins used for resampling.  Defaults to '1min'.
 
     tz : str
         The time zone used for localization of dates.  Defaults to 'US/Eastern'.
@@ -116,7 +113,7 @@ def record_counts(fileobject, time_bins_size='1min', tz='US/Eastern', keep_type=
     Returns
     -------
     pd.Series :
-        Conunts, indexed by datetime, type and member.
+        Counts, indexed by datetime, type and member.
     """
 
     def readfile(fileobject):
@@ -144,14 +141,6 @@ def record_counts(fileobject, time_bins_size='1min', tz='US/Eastern', keep_type=
     df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True) \
         .dt.tz_localize('UTC').dt.tz_convert(tz)
     del df['timestamp']
-
-    '''
-    # Group by id and resample
-    df = df.groupby([
-        pd.TimeGrouper(time_bins_size, key='datetime'),
-        'type','member'
-    ]).mean()
-    '''
 
     if keep_type:
         df.set_index(['datetime','type','member'],inplace=True)
