@@ -9,6 +9,8 @@ from .metadata import sample_counts
 
 
 from .proximity import member_to_badge_proximity
+from .proximity import member_to_badge_proximity_smooth
+from .proximity import member_to_badge_proximity_fill_gaps
 from .proximity import member_to_member_proximity
 from .proximity import member_to_beacon_proximity
 

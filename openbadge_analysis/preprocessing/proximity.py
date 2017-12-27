@@ -2,6 +2,73 @@ import pandas as pd
 import json
 
 
+def member_to_badge_proximity_smooth(m2badge, window_size = '5min',
+                                      min_samples = 1):
+    """ Smooths the given object using 1-D median filter
+    Parameters
+    ----------
+    m2badge : Member to badge object
+
+    window_size : str
+        The size of the window used for smoothing.  Defaults to '5min'.
+
+    min_samples : int
+        Minimum number of samples required for smoothing
+
+    Returns
+    -------
+    pd.DataFrame :
+        The member-to-badge proximity data, after smoothing.
+    """
+    df = m2badge.copy().reset_index()
+    df = df.sort_values(by=['member', 'observed_id', 'datetime'])
+    df.set_index('datetime', inplace=True)
+
+    df2 = df.groupby(['member', 'observed_id'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .median()
+
+    df2['rssi_std']\
+        = df.groupby(['member', 'observed_id'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .std()
+
+    df2 = df2.reorder_levels(['datetime', 'member', 'observed_id'], axis=0)\
+        .dropna().sort_index()
+    return df2
+
+def member_to_badge_proximity_fill_gaps(m2badge, time_bins_size='1min',
+                                        max_gap_size = 2):
+    """ Fill gaps in a given member to badge object
+    Parameters
+    ----------
+    m2badge : Member to badge object
+
+    time_bins_size : str
+        The size of the time bins used for resampling.  Defaults to '1min'.
+
+    max_gap_size : int
+         this is the maximum number of consecutive NaN values to forward/backward fill
+
+    Returns
+    -------
+    pd.DataFrame :
+        The member-to-badge proximity data, after filling gaps.
+    """
+
+    df = m2badge.copy().reset_index()
+    df = df.sort_values(by=['member', 'observed_id', 'datetime'])
+    df.set_index('datetime', inplace=True)
+
+    df = df.groupby(['member', 'observed_id'])[['rssi', 'rssi_std']] \
+        .resample(time_bins_size) \
+        .fillna(method='ffill', limit=max_gap_size)
+
+    df = df.reorder_levels(['datetime', 'member', 'observed_id'], axis=0)\
+        .dropna().sort_index()
+    return df
+
+
 def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'):
     """Creates a member-to-badge proximity DataFrame from a proximity data file.
     
@@ -32,12 +99,14 @@ def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'
                     str(data['member']),
                     int(observed_id),
                     float(distance['rssi']),
-                    float(distance['count']),
+                    #float(distance['count']), # removing the count since it's
+                                               # confusing when you use
+                                               #smoothing
                 )
 
     df = pd.DataFrame(
             readfile(fileobject),
-            columns=('timestamp', 'member', 'observed_id', 'rssi', 'count')
+            columns=('timestamp', 'member', 'observed_id', 'rssi')
     )
 
     # Convert timestamp to datetime for convenience, and localize to UTC
@@ -108,19 +177,17 @@ def member_to_member_proximity(m2badge, id2m):
 
     # For cases where we had proximity data coming from both sides,
     # we calculate two types of rssi:
-    # * weighted_mean - take the average RSSI weighted by the counts, and the sum of the counts
+    # * mean - take the average RSSI
     # * max - take the max value
-    df['rssi_weighted'] = df['count'] * df['rssi']
-    agg_f = {'rssi': ['max'], 'rssi_weighted': ['sum'], 'count': ['sum']}
+    agg_f = {'rssi': ['max','mean']}
     df = df.groupby(level=df.index.names).agg(agg_f)
-    df['rssi_weighted'] /= df['count']
 
     # rename columnes
-    df.columns = ['count_sum', 'rssi_max', 'rssi_weighted_mean']
-    df['rssi'] = df['rssi_weighted_mean']  # for backward compatibility
+    df.columns = ['rssi_max', 'rssi_mean']
+    df['rssi'] = df['rssi_mean']  # for backward compatibility
 
-    # Select only the fields 'rssi' and 'count'
-    return df[['rssi', 'rssi_max', 'rssi_weighted_mean', 'count_sum']]
+    # Select only the fields we need
+    return df[['rssi', 'rssi_max', 'rssi_mean']]
 
 
 def _member_to_beacon_proximity(m2badge, beacons):
@@ -186,5 +253,5 @@ def member_to_beacon_proximity(m2badge, id2b):
     # Remove duplicate indexes, keeping the first (arbitrarily)
     df = df[~df.index.duplicated(keep='first')]
 
-    return df[['rssi', 'count']]
+    return df[['rssi', 'rssi_std']]
 
