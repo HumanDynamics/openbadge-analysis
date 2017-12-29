@@ -28,14 +28,25 @@ def member_to_badge_proximity_smooth(m2badge, window_size = '5min',
         .rolling(window=window_size, min_periods=min_samples) \
         .median()
 
+    # For std, we put-1 when std was NaN. This handles the case
+    # when there was only one record. If there were no records (
+    # median was not calculated because of min_samples), the record
+    # will be dropped because of the NaN in 'rssi'
     df2['rssi_std']\
         = df.groupby(['member', 'observed_id'])[['rssi']] \
         .rolling(window=window_size, min_periods=min_samples) \
-        .std()
+        .std().fillna(-1)
+
+    # number of records used for calculating the median
+    df2['rssi_smooth_window_count']\
+        = df.groupby(['member', 'observed_id'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .count()
 
     df2 = df2.reorder_levels(['datetime', 'member', 'observed_id'], axis=0)\
         .dropna().sort_index()
     return df2
+
 
 def member_to_badge_proximity_fill_gaps(m2badge, time_bins_size='1min',
                                         max_gap_size = 2):
@@ -60,7 +71,8 @@ def member_to_badge_proximity_fill_gaps(m2badge, time_bins_size='1min',
     df = df.sort_values(by=['member', 'observed_id', 'datetime'])
     df.set_index('datetime', inplace=True)
 
-    df = df.groupby(['member', 'observed_id'])[['rssi', 'rssi_std']] \
+    df = df.groupby(['member', 'observed_id']) \
+        [['rssi', 'rssi_std','rssi_smooth_window_count']] \
         .resample(time_bins_size) \
         .fillna(method='ffill', limit=max_gap_size)
 
