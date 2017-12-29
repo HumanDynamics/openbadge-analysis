@@ -1,6 +1,6 @@
 import pandas as pd
 import json
-
+import collections
 
 def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'):
     """Creates a member-to-badge proximity DataFrame from a proximity data file.
@@ -61,22 +61,22 @@ def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'
 
 def member_to_member_proximity(m2badge, id2m):
     """Creates a member-to-member proximity DataFrame from member-to-badge proximity data.
-    
+
     Parameters
     ----------
     m2badge : pd.DataFrame
         The member-to-badge proximity data, as returned by `member_to_badge_proximity`.
-    
+
     id2m : pd.Series
         The badge IDs used by each member, indexed by datetime and badge id, as returned by
         `id_to_member_mapping`.
-    
+
     Returns
     -------
     pd.DataFrame :
         The member-to-member proximity data.
     """
-    
+
     df = m2badge.copy().reset_index()
 
     # Join the member names using their badge ids
@@ -108,17 +108,20 @@ def member_to_member_proximity(m2badge, id2m):
 
     # For cases where we had proximity data coming from both sides,
     # we calculate two types of rssi:
-    # * mean - take the average RSSI
+    # * weighted_mean - take the average RSSI weighted by the counts, and the sum of the counts
     # * max - take the max value
-    agg_f = {'rssi': ['max','mean']}
+    df['rssi_weighted'] = df['count'] * df['rssi']
+    agg_f = collections.OrderedDict([('rssi', ['max']), ('rssi_weighted', ['sum']), ('count', ['sum'])])
+
     df = df.groupby(level=df.index.names).agg(agg_f)
+    df['rssi_weighted'] /= df['count']
 
-    # rename columnes
-    df.columns = ['rssi_max', 'rssi_mean']
-    df['rssi'] = df['rssi_mean']  # for backward compatibility
+    # rename columns
+    df.columns = ['rssi_max', 'rssi_weighted_mean', 'count_sum']
+    df['rssi'] = df['rssi_weighted_mean']  # for backward compatibility
 
-    # Select only the fields we need
-    return df[['rssi', 'rssi_max', 'rssi_mean']]
+    # Select only the fields 'rssi' and 'count'
+    return df[['rssi', 'rssi_max', 'rssi_weighted_mean', 'count_sum']]
 
 
 def _member_to_beacon_proximity(m2badge, beacons):
