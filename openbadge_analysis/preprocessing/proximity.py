@@ -2,85 +2,6 @@ import pandas as pd
 import json
 
 
-def member_to_badge_proximity_smooth(m2badge, window_size = '5min',
-                                      min_samples = 1):
-    """ Smooths the given object using 1-D median filter
-    Parameters
-    ----------
-    m2badge : Member to badge object
-
-    window_size : str
-        The size of the window used for smoothing.  Defaults to '5min'.
-
-    min_samples : int
-        Minimum number of samples required for smoothing
-
-    Returns
-    -------
-    pd.DataFrame :
-        The member-to-badge proximity data, after smoothing.
-    """
-    df = m2badge.copy().reset_index()
-    df = df.sort_values(by=['member', 'observed_id', 'datetime'])
-    df.set_index('datetime', inplace=True)
-
-    df2 = df.groupby(['member', 'observed_id'])[['rssi']] \
-        .rolling(window=window_size, min_periods=min_samples) \
-        .median()
-
-    # For std, we put-1 when std was NaN. This handles the case
-    # when there was only one record. If there were no records (
-    # median was not calculated because of min_samples), the record
-    # will be dropped because of the NaN in 'rssi'
-    df2['rssi_std']\
-        = df.groupby(['member', 'observed_id'])[['rssi']] \
-        .rolling(window=window_size, min_periods=min_samples) \
-        .std().fillna(-1)
-
-    # number of records used for calculating the median
-    df2['rssi_smooth_window_count']\
-        = df.groupby(['member', 'observed_id'])[['rssi']] \
-        .rolling(window=window_size, min_periods=min_samples) \
-        .count()
-
-    df2 = df2.reorder_levels(['datetime', 'member', 'observed_id'], axis=0)\
-        .dropna().sort_index()
-    return df2
-
-
-def member_to_badge_proximity_fill_gaps(m2badge, time_bins_size='1min',
-                                        max_gap_size = 2):
-    """ Fill gaps in a given member to badge object
-    Parameters
-    ----------
-    m2badge : Member to badge object
-
-    time_bins_size : str
-        The size of the time bins used for resampling.  Defaults to '1min'.
-
-    max_gap_size : int
-         this is the maximum number of consecutive NaN values to forward/backward fill
-
-    Returns
-    -------
-    pd.DataFrame :
-        The member-to-badge proximity data, after filling gaps.
-    """
-
-    df = m2badge.copy().reset_index()
-    df = df.sort_values(by=['member', 'observed_id', 'datetime'])
-    df.set_index('datetime', inplace=True)
-
-    df = df.groupby(['member', 'observed_id']) \
-        [['rssi', 'rssi_std','rssi_smooth_window_count']] \
-        .resample(time_bins_size) \
-        .fillna(method='ffill', limit=max_gap_size)
-
-    df = df.reorder_levels(['datetime', 'member', 'observed_id'], axis=0)\
-        .dropna().sort_index()
-    return df
-
-
 def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'):
     """Creates a member-to-badge proximity DataFrame from a proximity data file.
     
@@ -111,14 +32,12 @@ def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'
                     str(data['member']),
                     int(observed_id),
                     float(distance['rssi']),
-                    #float(distance['count']), # removing the count since it's
-                                               # confusing when you use
-                                               #smoothing
+                    float(distance['count']),
                 )
 
     df = pd.DataFrame(
             readfile(fileobject),
-            columns=('timestamp', 'member', 'observed_id', 'rssi')
+            columns=('timestamp', 'member', 'observed_id', 'rssi', 'count')
     )
 
     # Convert timestamp to datetime for convenience, and localize to UTC
@@ -265,5 +184,85 @@ def member_to_beacon_proximity(m2badge, id2b):
     # Remove duplicate indexes, keeping the first (arbitrarily)
     df = df[~df.index.duplicated(keep='first')]
 
-    return df[['rssi', 'rssi_std']]
+    return df[['rssi']]
+
+
+def member_to_beacon_proximity_smooth(m2b, window_size = '5min',
+                                      min_samples = 1):
+    """ Smooths the given object using 1-D median filter
+    Parameters
+    ----------
+    m2b : Member to beacon object
+
+    window_size : str
+        The size of the window used for smoothing.  Defaults to '5min'.
+
+    min_samples : int
+        Minimum number of samples required for smoothing
+
+    Returns
+    -------
+    pd.DataFrame :
+        The member-to-beacon proximity data, after smoothing.
+    """
+    df = m2b.copy().reset_index()
+    df = df.sort_values(by=['member', 'beacon', 'datetime'])
+    df.set_index('datetime', inplace=True)
+
+    df2 = df.groupby(['member', 'beacon'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .median()
+
+    # For std, we put-1 when std was NaN. This handles the case
+    # when there was only one record. If there were no records (
+    # median was not calculated because of min_samples), the record
+    # will be dropped because of the NaN in 'rssi'
+    df2['rssi_std']\
+        = df.groupby(['member', 'beacon'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .std().fillna(-1)
+
+    # number of records used for calculating the median
+    df2['rssi_smooth_window_count']\
+        = df.groupby(['member', 'beacon'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .count()
+
+    df2 = df2.reorder_levels(['datetime', 'member', 'beacon'], axis=0)\
+        .dropna().sort_index()
+    return df2
+
+
+def member_to_beacon_proximity_fill_gaps(m2b, time_bins_size='1min',
+                                        max_gap_size = 2):
+    """ Fill gaps in a given member to beacon object
+    Parameters
+    ----------
+    m2b : Member to beacon object
+
+    time_bins_size : str
+        The size of the time bins used for resampling.  Defaults to '1min'.
+
+    max_gap_size : int
+         this is the maximum number of consecutive NaN values to forward/backward fill
+
+    Returns
+    -------
+    pd.DataFrame :
+        The member-to-beacon proximity data, after filling gaps.
+    """
+
+    df = m2b.copy().reset_index()
+    df = df.sort_values(by=['member', 'beacon', 'datetime'])
+    df.set_index('datetime', inplace=True)
+
+    df = df.groupby(['member', 'beacon']) \
+        [['rssi', 'rssi_std','rssi_smooth_window_count']] \
+        .resample(time_bins_size) \
+        .fillna(method='ffill', limit=max_gap_size)
+
+    df = df.reorder_levels(['datetime', 'member', 'beacon'], axis=0)\
+        .dropna().sort_index()
+    return df
+
 
