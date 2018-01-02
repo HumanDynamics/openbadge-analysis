@@ -19,7 +19,7 @@ test_requirements = [
 
 setup(
     name='openbadge_analysis',
-    version='0.3.6',
+    version='0.4.0',
     description="Python libraries for analysing OpenBadge data",
     long_description=readme + '\n\n' + history,
     author="Oren Lederman",
