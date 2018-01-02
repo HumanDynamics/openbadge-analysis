@@ -1,6 +1,6 @@
 import pandas as pd
 import json
-
+import collections
 
 def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'):
     """Creates a member-to-badge proximity DataFrame from a proximity data file.
@@ -61,22 +61,22 @@ def member_to_badge_proximity(fileobject, time_bins_size='1min', tz='US/Eastern'
 
 def member_to_member_proximity(m2badge, id2m):
     """Creates a member-to-member proximity DataFrame from member-to-badge proximity data.
-    
+
     Parameters
     ----------
     m2badge : pd.DataFrame
         The member-to-badge proximity data, as returned by `member_to_badge_proximity`.
-    
+
     id2m : pd.Series
         The badge IDs used by each member, indexed by datetime and badge id, as returned by
         `id_to_member_mapping`.
-    
+
     Returns
     -------
     pd.DataFrame :
         The member-to-member proximity data.
     """
-    
+
     df = m2badge.copy().reset_index()
 
     # Join the member names using their badge ids
@@ -111,12 +111,13 @@ def member_to_member_proximity(m2badge, id2m):
     # * weighted_mean - take the average RSSI weighted by the counts, and the sum of the counts
     # * max - take the max value
     df['rssi_weighted'] = df['count'] * df['rssi']
-    agg_f = {'rssi': ['max'], 'rssi_weighted': ['sum'], 'count': ['sum']}
+    agg_f = collections.OrderedDict([('rssi', ['max']), ('rssi_weighted', ['sum']), ('count', ['sum'])])
+
     df = df.groupby(level=df.index.names).agg(agg_f)
     df['rssi_weighted'] /= df['count']
 
-    # rename columnes
-    df.columns = ['count_sum', 'rssi_max', 'rssi_weighted_mean']
+    # rename columns
+    df.columns = ['rssi_max', 'rssi_weighted_mean', 'count_sum']
     df['rssi'] = df['rssi_weighted_mean']  # for backward compatibility
 
     # Select only the fields 'rssi' and 'count'
@@ -186,5 +187,85 @@ def member_to_beacon_proximity(m2badge, id2b):
     # Remove duplicate indexes, keeping the first (arbitrarily)
     df = df[~df.index.duplicated(keep='first')]
 
-    return df[['rssi', 'count']]
+    return df[['rssi']]
+
+
+def member_to_beacon_proximity_smooth(m2b, window_size = '5min',
+                                      min_samples = 1):
+    """ Smooths the given object using 1-D median filter
+    Parameters
+    ----------
+    m2b : Member to beacon object
+
+    window_size : str
+        The size of the window used for smoothing.  Defaults to '5min'.
+
+    min_samples : int
+        Minimum number of samples required for smoothing
+
+    Returns
+    -------
+    pd.DataFrame :
+        The member-to-beacon proximity data, after smoothing.
+    """
+    df = m2b.copy().reset_index()
+    df = df.sort_values(by=['member', 'beacon', 'datetime'])
+    df.set_index('datetime', inplace=True)
+
+    df2 = df.groupby(['member', 'beacon'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .median()
+
+    # For std, we put-1 when std was NaN. This handles the case
+    # when there was only one record. If there were no records (
+    # median was not calculated because of min_samples), the record
+    # will be dropped because of the NaN in 'rssi'
+    df2['rssi_std']\
+        = df.groupby(['member', 'beacon'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .std().fillna(-1)
+
+    # number of records used for calculating the median
+    df2['rssi_smooth_window_count']\
+        = df.groupby(['member', 'beacon'])[['rssi']] \
+        .rolling(window=window_size, min_periods=min_samples) \
+        .count()
+
+    df2 = df2.reorder_levels(['datetime', 'member', 'beacon'], axis=0)\
+        .dropna().sort_index()
+    return df2
+
+
+def member_to_beacon_proximity_fill_gaps(m2b, time_bins_size='1min',
+                                        max_gap_size = 2):
+    """ Fill gaps in a given member to beacon object
+    Parameters
+    ----------
+    m2b : Member to beacon object
+
+    time_bins_size : str
+        The size of the time bins used for resampling.  Defaults to '1min'.
+
+    max_gap_size : int
+         this is the maximum number of consecutive NaN values to forward/backward fill
+
+    Returns
+    -------
+    pd.DataFrame :
+        The member-to-beacon proximity data, after filling gaps.
+    """
+
+    df = m2b.copy().reset_index()
+    df = df.sort_values(by=['member', 'beacon', 'datetime'])
+    df.set_index('datetime', inplace=True)
+
+    df = df.groupby(['member', 'beacon']) \
+        [['rssi', 'rssi_std','rssi_smooth_window_count']] \
+        .resample(time_bins_size) \
+        .fillna(method='ffill', limit=max_gap_size)
+
+    df = df.reorder_levels(['datetime', 'member', 'beacon'], axis=0)\
+        .dropna().sort_index()
+    return df
+
 
