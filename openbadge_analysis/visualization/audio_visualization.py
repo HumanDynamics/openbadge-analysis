@@ -195,3 +195,4 @@ def plot_spk(df_flt, df_speak, seps=None, show_trace=False, show_std=False, beg=
     plt.xticks(rotation=rotation)
     plt.tight_layout()
     return sbeg, send    
+
