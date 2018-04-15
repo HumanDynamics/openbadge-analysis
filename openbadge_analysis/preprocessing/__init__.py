@@ -18,6 +18,7 @@ from .hublog import hublog_scans
 from .hublog import hublog_resets
 from .hublog import hublog_clock_syncs
 
-from .audio import *
+__all__ = ["audio"]
+
 
 

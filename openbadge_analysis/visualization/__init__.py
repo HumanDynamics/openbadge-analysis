@@ -3,5 +3,4 @@
 
 from .embedding import rssi_to_distance, members_2d_embedding, members_2d_embedding_with_beacons
 
-from .audio_visualization import *
-
+__all__ = ["audio_visualization" ]
