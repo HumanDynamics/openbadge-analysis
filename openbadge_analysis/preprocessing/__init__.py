@@ -19,6 +19,3 @@ from .hublog import hublog_resets
 from .hublog import hublog_clock_syncs
 
 __all__ = ["audio"]
-
-
-

@@ -26,6 +26,7 @@ def get_meet_sec(df_meet):
 def get_meet_flt(df_meet, window=8):
     """
     data processing with median filter.
+
     """
     df_flt = pd.rolling_median(df_meet, window=window)
     return df_flt
