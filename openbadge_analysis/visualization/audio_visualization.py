@@ -2,10 +2,9 @@ import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import seaborn as sns
 import sys,os 
-src_dir = os.path.join(os.getcwd(), os.pardir, 'openbadge_analysis/preprocessing')
+src_dir = os.path.join(os.getcwd(), os.pardir, '../src')
 sys.path.append(src_dir)
-from audio import *
-
+from openbadge_analysis.preprocessing.audio import *
 
 def get_df_cor(df_meeting, sel_users):
     """
