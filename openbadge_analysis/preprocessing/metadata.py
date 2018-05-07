@@ -77,7 +77,7 @@ def id_to_member_mapping(fileobject, time_bins_size='1min', tz='US/Eastern', fil
     return s
 
 
-def voltages(fileobject, time_bins_size='1min', tz='US/Eastern'):
+def voltages(fileobject, time_bins_size='1min', tz='US/Eastern', skip_errors=False):
     """Creates a DataFrame of voltages, for each member and time bin.
     
     Parameters
@@ -90,22 +90,34 @@ def voltages(fileobject, time_bins_size='1min', tz='US/Eastern'):
     
     tz : str
         The time zone used for localization of dates.  Defaults to 'US/Eastern'.
-    
+
+    skip_errors : boolean
+        If set to True, skip errors in the data file
+
     Returns
     -------
     pd.Series :
         Voltages, indexed by datetime and member.
     """
     
-    def readfile(fileobject):
+    def readfile(fileobject, skip_errors):
+        i = 0
         for line in fileobject:
-            data = json.loads(line)['data']
+            i = i + 1
+            try:
+                data = json.loads(line)['data']
 
-            yield (data['timestamp'],
-                   str(data['member']),
-                   float(data['voltage']))
-    
-    df = pd.DataFrame(readfile(fileobject), columns=['timestamp', 'member', 'voltage'])
+                yield (data['timestamp'],
+                       str(data['member']),
+                       float(data['voltage']))
+            except:
+                print("Error in line#:", i, line)
+                if skip_errors:
+                    continue
+                else:
+                    raise
+
+    df = pd.DataFrame(readfile(fileobject, skip_errors), columns=['timestamp', 'member', 'voltage'])
 
     # Convert the timestamp to a datetime, localized in UTC
     df['datetime'] = pd.to_datetime(df['timestamp'], unit='s', utc=True) \
@@ -123,7 +135,7 @@ def voltages(fileobject, time_bins_size='1min', tz='US/Eastern'):
     return df['voltage']
 
 
-def sample_counts(fileobject, tz='US/Eastern', keep_type=False):
+def sample_counts(fileobject, tz='US/Eastern', keep_type=False, skip_errors=False):
     """Creates a DataFrame of sample counts, for each member and raw record
 
     Parameters
@@ -137,6 +149,8 @@ def sample_counts(fileobject, tz='US/Eastern', keep_type=False):
     keep_type : boolean
         If set to True, the type of the record will be returned as well
 
+    skip_errors : boolean
+        If set to True, skip errors in the data file
 
     Returns
     -------
@@ -144,25 +158,34 @@ def sample_counts(fileobject, tz='US/Eastern', keep_type=False):
         Counts, indexed by datetime, type and member.
     """
 
-    def readfile(fileobject):
+    def readfile(fileobject, skip_errors=False):
+        i = 0
         for line in fileobject:
-            raw_data = json.loads(line)
-            data = raw_data['data']
-            type = raw_data['type']
+            i = i + 1
+            try:
+                raw_data = json.loads(line)
+                data = raw_data['data']
+                type = raw_data['type']
 
-            if type == 'proximity received':
-                cnt = len(data['rssi_distances'])
-            elif type == 'audio received':
-                cnt = len(data['samples'])
-            else:
-                cnt = -1
+                if type == 'proximity received':
+                    cnt = len(data['rssi_distances'])
+                elif type == 'audio received':
+                    cnt = len(data['samples'])
+                else:
+                    cnt = -1
 
-            yield (data['timestamp'],
-                str(type),
-                str(data['member']),
-                int(cnt))
+                yield (data['timestamp'],
+                       str(type),
+                       str(data['member']),
+                       int(cnt))
+            except:
+                print("Error in line#:", i, line)
+                if skip_errors:
+                    continue
+                else:
+                    raise
 
-    df = pd.DataFrame(readfile(fileobject), columns=['timestamp' ,'type', 'member',
+    df = pd.DataFrame(readfile(fileobject, skip_errors), columns=['timestamp' ,'type', 'member',
                                                      'cnt'])
 
     # Convert the timestamp to a datetime, localized in UTC
