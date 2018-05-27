@@ -25,6 +25,9 @@ def _id_to_member_mapping_fill_gaps(idmap, time_bins_size='1min'):
 
 def id_to_member_mapping(fileobject, time_bins_size='1min', tz='US/Eastern', fill_gaps=True):
     """Creates a mapping from badge id to member, for each time bin, from proximity data file.
+    Depending on the version of the logfile (and it's content), it will either use the member_id
+    field to generate the mapping (newer version), or calculate an ID form the MAC address (this
+    was the default behavior of the older version of the hubs and badges)
     
     Parameters
     ----------
@@ -48,11 +51,20 @@ def id_to_member_mapping(fileobject, time_bins_size='1min', tz='US/Eastern', fil
     """
     
     def readfile(fileobject):
+        no_id_warning = False
         for line in fileobject:
             data = json.loads(line)['data']
+            member_id = None
+            if 'member_id' in data:
+                member_id = data['member_id']
+            else:
+                member_id = mac_address_to_id(data['badge_address'])
+                if not no_id_warning:
+                    print("Warning - no id provided in data. Calculating id from MAC address")
+                no_id_warning = True
 
             yield (data['timestamp'],
-                   mac_address_to_id(data['badge_address']),
+                   member_id,
                    str(data['member']))
     
     df = pd.DataFrame(readfile(fileobject), columns=['timestamp', 'id', 'member'])
