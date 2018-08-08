@@ -23,7 +23,7 @@ def _id_to_member_mapping_fill_gaps(idmap, time_bins_size='1min'):
     return s
 
 
-def id_to_member_mapping(fileobject, time_bins_size='1min', tz='US/Eastern', fill_gaps=True):
+def legacy_id_to_member_mapping(fileobject, time_bins_size='1min', tz='US/Eastern', fill_gaps=True):
     """Creates a mapping from badge id to member, for each time bin, from proximity data file.
     Depending on the version of the logfile (and it's content), it will either use the member_id
     field to generate the mapping (newer version), or calculate an ID form the MAC address (this
@@ -87,6 +87,40 @@ def id_to_member_mapping(fileobject, time_bins_size='1min', tz='US/Eastern', fil
         s = _id_to_member_mapping_fill_gaps(s, time_bins_size=time_bins_size)
 
     return s
+
+
+def id_to_member_mapping(mapper, time_bins_size='1min', tz='US/Eastern', fill_gaps=True):
+    """Creates a pd.Series mapping member numeric IDs to the string
+    member key associated with them. 
+
+    If the 'mapper' provided is a DataFrame, assumes it's metadata and that ID's 
+        do not change mapping throughout the project, and proceeds to create a
+        Series with only a member index.
+    If the 'mapper' provided is a file object, assumes the old version of id_map
+        and creates a Series with a datetime and member index.
+
+    Parameters
+    ----------
+    fileobject : file object
+        A file to read to determine the mapping.
+    
+    members_metadata : pd.DataFrame
+        Metadata dataframe, as downloaded from the server, to map IDs to keys.
+        
+    Returns
+    -------
+    pd.Series : 
+        The ID to member key mapping.
+    
+    """
+    if type(mapper) == file:
+        idmap = legacy_id_to_member_mapping(mapper, time_bins_size=time_bins_size, tz=tz, fill_gaps=fill_gaps)
+        return idmap
+    elif type(mapper) == pd.DataFrame:
+        idmap = {row.id: row.key for row in members_metadata.itertuples()}
+        return pd.DataFrame.from_dict(idmap, orient='index')[0].rename('member')
+    else:
+        raise ValueError("You must provide either a fileobject or metadata dataframe as the mapper.")
 
 
 def voltages(fileobject, time_bins_size='1min', tz='US/Eastern', skip_errors=False):

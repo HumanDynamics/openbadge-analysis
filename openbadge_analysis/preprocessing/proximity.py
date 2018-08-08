@@ -78,10 +78,15 @@ def member_to_member_proximity(m2badge, id2m):
     """
 
     df = m2badge.copy().reset_index()
-
+    
     # Join the member names using their badge ids
-    df = df.join(id2m, on=['datetime', 'observed_id'], lsuffix='1', rsuffix='2')
-
+    # If id2m index is a MultiIndex, assume it is a time series and use legacy method
+    if type(id2m.index) == pd.MultiIndex:
+        df = df.join(id2m, on=['datetime', 'observed_id'], lsuffix='1', rsuffix='2')
+    # Otherwise, assume it is not time-based, and join without datetime
+    else:
+        df = df.join(id2m, on=['observed_id'], lsuffix='1', rsuffix='2')
+    
     # Filter out the beacons (i.e. those ids that did not have a mapping)
     df.dropna(axis=0, subset=['member2'], inplace=True)
 
@@ -89,7 +94,7 @@ def member_to_member_proximity(m2badge, id2m):
     # This is done because pandas likes to convert ints to floats when there are
     # missing values
     df['member2'] = df['member2'].astype(id2m.dtype)
-
+        
     # Set the index and sort it
     df.set_index(['datetime', 'member1', 'member2'], inplace=True)
     df.sort_index(inplace=True)

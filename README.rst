@@ -30,7 +30,7 @@ Python libraries for analysing OpenBadge data. See examples in the `examples rep
 
 Notes
 --------
-* When updaring the version, make the change in the master brnach (don't forget to git checkout master and git pull)
+* When updating the version, make the change in the master branch (don't forget to git checkout master and git pull)
 * Use bumpversion. For example "bumpversion patch" will increase the patch number
 * After updating the version, use "git push --tags"
 
