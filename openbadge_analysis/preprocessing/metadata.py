@@ -117,7 +117,7 @@ def id_to_member_mapping(mapper, time_bins_size='1min', tz='US/Eastern', fill_ga
         idmap = legacy_id_to_member_mapping(mapper, time_bins_size=time_bins_size, tz=tz, fill_gaps=fill_gaps)
         return idmap
     elif type(mapper) == pd.DataFrame:
-        idmap = {row.id: row.key for row in members_metadata.itertuples()}
+        idmap = {row.id: row.key for row in mapper.itertuples()}
         return pd.DataFrame.from_dict(idmap, orient='index')[0].rename('member')
     else:
         raise ValueError("You must provide either a fileobject or metadata dataframe as the mapper.")

@@ -3,6 +3,7 @@
 from .raw import split_raw_data_by_day
 
 from .metadata import id_to_member_mapping
+from .metadata import legacy_id_to_member_mapping
 from .metadata import voltages
 from .metadata import sample_counts
 
