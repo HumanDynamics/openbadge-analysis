@@ -1,5 +1,6 @@
 import pandas as pd
 import json
+import io
 from ..core import mac_address_to_id
 
 def _id_to_member_mapping_fill_gaps(idmap, time_bins_size='1min'):
@@ -113,10 +114,10 @@ def id_to_member_mapping(mapper, time_bins_size='1min', tz='US/Eastern', fill_ga
         The ID to member key mapping.
     
     """
-    if type(mapper) == file:
+    if isinstance(mapper, io.BufferedIOBase) | isinstance(mapper, file):
         idmap = legacy_id_to_member_mapping(mapper, time_bins_size=time_bins_size, tz=tz, fill_gaps=fill_gaps)
         return idmap
-    elif type(mapper) == pd.DataFrame:
+    elif isinstance(mapper, pd.DataFrame):
         idmap = {row.member_id: row.member for row in mapper.itertuples()}
         return pd.DataFrame.from_dict(idmap, orient='index')[0].rename('member')
     else:
