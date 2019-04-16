@@ -75,15 +75,11 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None, ignore_erro
     :return:
     """
     first_data_row = 0 # some file may contain meeting information/header
-    meeting_metadata = meeting_log_version_from_file(file_object)
 
     raw_data = file_object.readlines()           # This is a list of strings
 
-    if meeting_metadata is not None:
-        first_data_row = 1 # skip the header
-        log_version = meeting_log_version(meeting_metadata)
-
     if log_version == '1.0':
+        first_data_row = 1
         batched_sample_data = map(json.loads, raw_data[first_data_row:])  # Convert the raw sample data into a json object
 
     elif log_version == '2.0':
@@ -105,7 +101,7 @@ def load_audio_chunks_as_json_objects(file_object, log_version=None, ignore_erro
                     raise
 
     else:
-        raise Exception('file log version was not set and cannot be identified')
+        raise Exception('Must provide log version')
 
     return batched_sample_data
 
@@ -158,15 +154,13 @@ def sample2data(input_file_path, datetime_index=True, resample=True, log_version
     :return:
     """
     with open(input_file_path,'r') as input_file:
-        log_version_from_file = meeting_log_version_from_file(input_file)
+        if log_version is None:
+            log_version = meeting_log_version_from_file(input_file)
         meeting_metadata = metadata_from_file(input_file)
-        batched_sample_data = load_audio_chunks_as_json_objects(input_file, log_version, ignore_errors)
+        batched_sample_data = load_audio_chunks_as_json_objects(file_object=input_file, log_version=log_version, ignore_errors=ignore_errors)
 
     sample_data = []
-
-    if log_version is None:
-        log_version = log_version_from_file
-
+    
     for j in range(len(batched_sample_data)):
         batch = {}
         batch.update(batched_sample_data[j]) #Create a deep copy of the jth batch of samples
