@@ -2,7 +2,7 @@ cython
 numpy
 scipy
 matplotlib
-pandas
+pandas===0.20.3
 seaborn
 bokeh==0.12.1
 ggplot
