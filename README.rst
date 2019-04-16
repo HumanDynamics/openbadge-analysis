@@ -32,7 +32,7 @@ Notes
 --------
 * When updating the version, make the change in the master branch (don't forget to git checkout master and git pull)
 * Use bumpversion. For example "bumpversion patch" will increase the patch number
-* After updating the version, use "git push --tags"
+* After updating the version, use "git push --tags" and then "git push" (just in case)
 
 Credits
 ---------
